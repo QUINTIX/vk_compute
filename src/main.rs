@@ -3,14 +3,16 @@
     unused_variables
 )]
 
+mod lib;
+
 use std::collections::HashSet;
 use std::fs;
 use serde::Deserialize;
 use anyhow::{anyhow, Result};
 use owo_colors::{OwoColorize, AnsiColors};
-use thiserror::Error;
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_1::*;
+use lib::{SuitabilityError, get_best_memory_type_index};
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
@@ -24,6 +26,9 @@ const VK_KHR_PORTABILITY_SUBSET : vk::ExtensionName =
 
 const HAS_COMPUTE : fn(&vk::QueueFamilyProperties) -> bool = 
 	|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE);
+
+const NUM_FLOATS : usize = 16384;
+const NUM_BUFFERS : usize = 2;
 
 unsafe fn create_instance(entry: &Entry) -> Result<Instance>{
 	let application_info = vk::ApplicationInfo::builder()
@@ -67,11 +72,9 @@ unsafe fn get_first_compute_queue_family_index(
 	if let Some(maybe_index) = maybe_index {
 		Ok(maybe_index)
 	} else {
-		Err(anyhow!(SuitabilityError("no suitable compute queue found")))
+		Err(anyhow!(SuitabilityError("suitable compute queue")))
 	}
 }
-
-
 
 #[derive(Clone, Debug)]
 struct App {
@@ -79,6 +82,8 @@ struct App {
 	instance: Instance,
 	physical_device : vk::PhysicalDevice,
 	logical_device : Device,
+	queue_index : u32,
+	memory_index : u32,
 }
 
 impl App {
@@ -125,8 +130,19 @@ impl App {
 		};
 
 		let logical_device = instance.create_device(physical_device, &device_create_info, None)?;
+
+		let memory_propertes = instance.get_physical_device_memory_properties(physical_device);
+		let desired_size = NUM_BUFFERS * NUM_FLOATS * std::mem::size_of::<f32>();
+
+		let memory_index : u32 = get_best_memory_type_index(
+			&memory_propertes, 
+			vk::MemoryPropertyFlags::HOST_COHERENT |
+			vk::MemoryPropertyFlags::HOST_VISIBLE,
+			desired_size as usize
+		)?;
+		let queue_index : u32 = compute_queue_index;
 		
-		Ok(Self { entry, instance, physical_device, logical_device })
+		Ok(Self { entry, instance, physical_device, logical_device, queue_index, memory_index })
 	}
 
 	unsafe fn destroy(&mut self) -> Result<()> {
@@ -165,10 +181,6 @@ unsafe fn has_portability_subset_extension(
 	Ok(has_portability)
 }
 
-#[derive(Debug, Error)]
-#[error("Missing {0}.")]
-pub struct SuitabilityError(pub &'static str);
-
 unsafe fn pick_physical_device(instance: &Instance, config: &DeviceConfig) -> Result<vk::PhysicalDevice> {
 	for physical_device in instance.enumerate_physical_devices()? {
 		let props = instance.get_physical_device_properties(physical_device);
@@ -192,7 +204,7 @@ unsafe fn pick_physical_device(instance: &Instance, config: &DeviceConfig) -> Re
 			return Ok(physical_device)
 		}
 	}
-	Err(anyhow!(SuitabilityError("Failed to find suitable physical device.")))
+	Err(anyhow!(SuitabilityError("suitable physical device")))
 }
 
 unsafe fn has_compute_queue(instance: &Instance, physical_device : vk::PhysicalDevice) -> bool {
@@ -208,6 +220,9 @@ fn main() -> Result<()> {
 
 	let mut app = unsafe { App::create(&config.device)? };
 	
+	println!("found compute index {} and memory index {}", 
+		app.queue_index, app.memory_index
+	);
 	// stuff happens here
 
 	unsafe { app.destroy() }

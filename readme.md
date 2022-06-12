@@ -10,7 +10,7 @@ a WIP Rust port of [my C version](https://github.com/QUINTIX/vkCompute) using
 - [x] externalize device selection to `config.toml`
 - [x] select compute capable command queue
 - [x] initiate/teardown logical device
-- [ ] select host visible & host coherent memory
+- [x] select host visible & host coherent memory
 - [ ] allocate and populate + teardown 16k floats for input and 16k floats for output
 - [ ] bind/teardown input and output buffers
 - [ ] compile compute shader from `cargo build`
