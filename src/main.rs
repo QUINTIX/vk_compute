@@ -162,6 +162,8 @@ impl App {
 
 		memcpy(floats.as_ptr(), mapped.cast(), floats.len());
 
+		self.logical_device.unmap_memory(self.memory);
+
 		Ok(())
 	}
 
