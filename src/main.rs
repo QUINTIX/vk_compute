@@ -6,13 +6,19 @@
 mod lib;
 
 use std::collections::HashSet;
-use std::fs;
-use serde::Deserialize;
+use std::ptr::copy_nonoverlapping as memcpy;
+
 use anyhow::{anyhow, Result};
 use owo_colors::{OwoColorize, AnsiColors};
 use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_1::*;
-use lib::{SuitabilityError, get_best_memory_type_index};
+use lib::{
+	get_config,
+	DeviceConfig,
+	pick_physical_device,
+	get_first_compute_queue_family_index, 
+	get_best_memory_type_index
+};
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
@@ -23,9 +29,6 @@ const VALIDATION_LAYER: vk::ExtensionName =
 	vk::ExtensionName::from_bytes(VALIDATION_LAYER_RAW_STRING);
 const VK_KHR_PORTABILITY_SUBSET : vk::ExtensionName =
 	vk::ExtensionName::from_bytes(VK_KHR_PORTABILITY_SUBSET_STR.as_bytes());
-
-const HAS_COMPUTE : fn(&vk::QueueFamilyProperties) -> bool = 
-	|p| p.queue_flags.contains(vk::QueueFlags::COMPUTE);
 
 const NUM_FLOATS : usize = 16384;
 const NUM_BUFFERS : usize = 2;
@@ -58,24 +61,6 @@ unsafe fn create_instance(entry: &Entry) -> Result<Instance>{
 	Ok(entry.create_instance(&instance_create_info, None)?)
 }
 
-unsafe fn get_first_compute_queue_family_index(
-	instance: &Instance,
-	physical_device: vk::PhysicalDevice
-) -> Result<u32> {
-	let properties = instance
-		.get_physical_device_queue_family_properties(physical_device);
-	
-	let maybe_index = properties.iter()
-		.position(HAS_COMPUTE)
-		.map(|i| i as u32);
-
-	if let Some(maybe_index) = maybe_index {
-		Ok(maybe_index)
-	} else {
-		Err(anyhow!(SuitabilityError("suitable compute queue")))
-	}
-}
-
 #[derive(Clone, Debug)]
 struct App {
 	entry : Entry,
@@ -84,6 +69,7 @@ struct App {
 	logical_device : Device,
 	queue_index : u32,
 	memory_index : u32,
+	memory: vk::DeviceMemory,
 }
 
 impl App {
@@ -132,7 +118,8 @@ impl App {
 		let logical_device = instance.create_device(physical_device, &device_create_info, None)?;
 
 		let memory_propertes = instance.get_physical_device_memory_properties(physical_device);
-		let desired_size = NUM_BUFFERS * NUM_FLOATS * std::mem::size_of::<f32>();
+		let desired_size = (NUM_BUFFERS * NUM_FLOATS * 
+			std::mem::size_of::<f32>()) as vk::DeviceSize;
 
 		let memory_index : u32 = get_best_memory_type_index(
 			&memory_propertes, 
@@ -140,12 +127,46 @@ impl App {
 			vk::MemoryPropertyFlags::HOST_VISIBLE,
 			desired_size as usize
 		)?;
+
+		let memory_allocate_info = vk::MemoryAllocateInfo::builder()
+			.allocation_size(desired_size)
+			.memory_type_index(memory_index)
+		.build();
+
+		let memory = logical_device.allocate_memory(
+			&memory_allocate_info,
+			None
+		)?;
+
 		let queue_index : u32 = compute_queue_index;
 		
-		Ok(Self { entry, instance, physical_device, logical_device, queue_index, memory_index })
+		Ok(Self { 
+			entry, instance, 
+			physical_device, logical_device, 
+			queue_index, memory_index,
+			memory
+		})
+	}
+
+	pub unsafe fn populate_buffer(&mut self) -> Result<()> {
+		let mut floats : Vec<f32 >= Vec::with_capacity(NUM_FLOATS);
+
+		for item in 0..NUM_FLOATS {
+			floats.push((item as f32) * 0.5);
+		}
+
+		let shader_read_buffer_size = (NUM_FLOATS * std::mem::size_of::<f32>()) as vk::DeviceSize;
+		let mapped = self.logical_device.map_memory(
+			self.memory, 0, shader_read_buffer_size, vk::MemoryMapFlags::empty()
+		)?;
+
+		memcpy(floats.as_ptr(), mapped.cast(), floats.len());
+
+		Ok(())
 	}
 
 	unsafe fn destroy(&mut self) -> Result<()> {
+		self.logical_device.free_memory(self.memory, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
 		Ok(())
@@ -181,37 +202,6 @@ unsafe fn has_portability_subset_extension(
 	Ok(has_portability)
 }
 
-unsafe fn pick_physical_device(instance: &Instance, config: &DeviceConfig) -> Result<vk::PhysicalDevice> {
-	for physical_device in instance.enumerate_physical_devices()? {
-		let props = instance.get_physical_device_properties(physical_device);
-		println!("found device with vendor_id {:x} and device_id {:x} that is named {}", 
-			(props.vendor_id).green(),
-			(props.device_id).green(), 
-			(props.device_name).bright_blue()
-		);
-		
-		if !has_compute_queue(&instance, physical_device){
-			continue;
-		}
-
-		if config.first_device {
-			println!("using first available device {}", (props.device_name).bright_blue());
-			return Ok(physical_device)
-		} else if None == config.device_id {
-			return Err(anyhow!("must specify either a device_id or first_device"))
-		} else if props.device_id == config.device_id.unwrap() {
-			println!("using selected device {}", (props.device_name).bright_blue());
-			return Ok(physical_device)
-		}
-	}
-	Err(anyhow!(SuitabilityError("suitable physical device")))
-}
-
-unsafe fn has_compute_queue(instance: &Instance, physical_device : vk::PhysicalDevice) -> bool {
-	let properties = instance.get_physical_device_queue_family_properties(physical_device);
-	properties.iter().any(HAS_COMPUTE)
-}
-
 #[rustfmt::skip]
 fn main() -> Result<()> {
 	pretty_env_logger::init();
@@ -219,28 +209,11 @@ fn main() -> Result<()> {
 	let config = get_config()?;
 
 	let mut app = unsafe { App::create(&config.device)? };
-	
 	println!("found compute index {} and memory index {}", 
-		app.queue_index, app.memory_index
-	);
+		(app.queue_index).green(), (app.memory_index).green());
+
+	unsafe { app.populate_buffer()? };
 	// stuff happens here
 
 	unsafe { app.destroy() }
-}
-
-#[derive(Deserialize)]
-struct Config {
-	device : DeviceConfig,
-}
-
-#[derive(Deserialize)]
-struct DeviceConfig {
-	first_device : bool,
-	device_id : Option<u32>,
-}
-
-fn get_config() ->  Result<Config, toml::de::Error> {
-	let contents = fs::read_to_string("config.toml")
-		.expect("couldn't load config.toml");
-	toml::from_str(&contents)
 }
