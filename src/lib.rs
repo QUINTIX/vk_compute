@@ -9,7 +9,6 @@ use serde::Deserialize;
 #[error("Missing {0}.")]
 pub struct SuitabilityError(pub &'static str);
 
-
 pub fn get_best_memory_type_index(
 		properties: &vk::PhysicalDeviceMemoryProperties,
 		desired_flags: vk::MemoryPropertyFlags,
@@ -92,4 +91,21 @@ pub unsafe fn get_first_compute_queue_family_index(
 	} else {
 		Err(anyhow!(SuitabilityError("suitable compute queue")))
 	}
+}
+
+pub unsafe fn create_shader_module(
+    device: &Device,
+    bytecode: &[u8],
+) -> Result<vk::ShaderModule> {
+	let bytecode = Vec::<u8>::from(bytecode);
+	let (prefix, code, suffix) = bytecode.align_to::<u32>();
+	if !prefix.is_empty() || !suffix.is_empty() {
+		return Err(anyhow!("Shader bytecode is not properly aligned."));
+	}
+
+	let info = vk::ShaderModuleCreateInfo::builder()
+    .code_size(bytecode.len())
+    .code(code);
+
+	Ok(device.create_shader_module(&info, None)?)
 }

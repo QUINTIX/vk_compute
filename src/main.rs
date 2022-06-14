@@ -17,7 +17,8 @@ use lib::{
 	DeviceConfig,
 	pick_physical_device,
 	get_first_compute_queue_family_index, 
-	get_best_memory_type_index
+	get_best_memory_type_index,
+	create_shader_module
 };
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
@@ -70,6 +71,7 @@ struct App {
 	queue_index : u32,
 	memory_index : u32,
 	memory: vk::DeviceMemory,
+	compute_shader: vk::ShaderModule,
 }
 
 impl App {
@@ -116,6 +118,9 @@ impl App {
 		};
 
 		let logical_device = instance.create_device(physical_device, &device_create_info, None)?;
+		
+		let shader_binary = std::include_bytes!("../compute.spv");
+		let compute_shader = create_shader_module(&logical_device, shader_binary)?;
 
 		let memory_propertes = instance.get_physical_device_memory_properties(physical_device);
 		let desired_size = (NUM_BUFFERS * NUM_FLOATS * 
@@ -144,7 +149,8 @@ impl App {
 			entry, instance, 
 			physical_device, logical_device, 
 			queue_index, memory_index,
-			memory
+			memory,
+			compute_shader
 		})
 	}
 
@@ -168,6 +174,7 @@ impl App {
 	}
 
 	unsafe fn destroy(&mut self) -> Result<()> {
+		self.logical_device.destroy_shader_module(self.compute_shader, None);
 		self.logical_device.free_memory(self.memory, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);

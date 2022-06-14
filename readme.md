@@ -13,8 +13,8 @@ a WIP Rust port of [my C version](https://github.com/QUINTIX/vkCompute) using
 - [x] select host visible & host coherent memory
 - [x] allocate and populate + teardown 16k floats for input and 16k floats for output
 - [ ] bind/teardown input and output buffers
-- [ ] compile compute shader from `cargo build`
-- [ ] load computer shader module from compiled external SPV file
+- [x] compile compute shader from `cargo build`
+- [x] load computer shader module from compiled external SPV file
 - [ ] create/teardown discriptor set layout & discriptor pool
 - [ ] create/teardown pipeline & pipeline layout
 - [ ] create/teardown command pool & command buffer
