@@ -23,11 +23,10 @@ use lib::{
 
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
-const VALIDATION_LAYER_RAW_STRING : &[u8] = b"VK_LAYER_KHRONOS_validation";
 const VK_KHR_PORTABILITY_SUBSET_STR : &str = "VK_KHR_portability_subset";
 
 const VALIDATION_LAYER: vk::ExtensionName =
-	vk::ExtensionName::from_bytes(VALIDATION_LAYER_RAW_STRING);
+	vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
 const VK_KHR_PORTABILITY_SUBSET : vk::ExtensionName =
 	vk::ExtensionName::from_bytes(VK_KHR_PORTABILITY_SUBSET_STR.as_bytes());
 
@@ -54,7 +53,11 @@ unsafe fn create_instance(entry: &Entry) -> Result<Instance>{
 
 	log_validation();
 
-	let layers = configured_layers();
+	let layers = if VALIDATION_ENABLED {
+		vec![VALIDATION_LAYER.as_ptr()]
+	} else {
+		Vec::new()
+	};
 	
 	let instance_create_info = vk::InstanceCreateInfo::builder()
 		.application_info(&application_info)
@@ -87,7 +90,11 @@ impl App {
 			.queue_family_index(compute_queue_index)
 			.queue_priorities(queue_priorities)];
 		
-		let layers = configured_layers();
+		let layers = if VALIDATION_ENABLED {
+			vec![VALIDATION_LAYER.as_ptr()]
+		} else {
+			Vec::new()
+		};
 
 		let does_have_portability_subset_extension =
 			has_portability_subset_extension(&instance, physical_device)?;
@@ -179,14 +186,6 @@ impl App {
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
 		Ok(())
-	}
-}
-
-fn configured_layers() -> Vec<*const i8> {
-	if VALIDATION_ENABLED {
-		vec![VALIDATION_LAYER.as_ptr()]
-	} else {
-		Vec::new()
 	}
 }
 

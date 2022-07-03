@@ -1,6 +1,7 @@
 # Hello Vulkan Compute
 
-a WIP Rust port of [my C version](https://github.com/QUINTIX/vkCompute) using 
+a WIP Rust port of [my take on](https://github.com/QUINTIX/vkCompute) 
+Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-vulkan-compute-example/) using 
 [Vulkania](https://docs.rs/vulkanalia/latest/vulkanalia/), loosely following
 <https://kylemayes.github.io/vulkanalia/>
 
