@@ -180,8 +180,57 @@ impl App {
 		Ok(())
 	}
 
-	unsafe fn destroy(&mut self) -> Result<()> {
+	pub unsafe fn bind_buffer_layout(&mut self) -> Result<(
+		vk::Buffer, vk::Buffer, vk::DescriptorSetLayout
+	)> {
+		let size_and_offset = (NUM_FLOATS * std::mem::size_of::<f32>()) as u64;
+
+		let buffer_info = vk::BufferCreateInfo::builder()
+			.size(size_and_offset)
+			.usage(vk::BufferUsageFlags::STORAGE_BUFFER)
+			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+		let in_buffer = self.logical_device.create_buffer(&buffer_info, None)?;
+		self.logical_device.bind_buffer_memory(
+			in_buffer, self.memory, 0
+		)?;
+
+		let out_buffer = self.logical_device.create_buffer(&buffer_info, None)?;
+		self.logical_device.bind_buffer_memory(
+			out_buffer, self.memory, size_and_offset
+		)?;
+
+		let bindings : Vec<vk::DescriptorSetLayoutBinding> = vec![
+			vk::DescriptorSetLayoutBinding::builder()
+				.binding(0)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.descriptor_count(1)
+				.stage_flags(vk::ShaderStageFlags::COMPUTE)
+				.build(),
+			vk::DescriptorSetLayoutBinding::builder()
+				.binding(1)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.descriptor_count(1)
+				.stage_flags(vk::ShaderStageFlags::COMPUTE)
+				.build(),
+		];
+
+		let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+		let layout = self.logical_device.create_descriptor_set_layout(&info, None)?;
+
+		Ok((in_buffer, out_buffer, layout))
+	}
+
+	unsafe fn destroy(&mut self,
+		in_buffer : vk::Buffer,
+		out_buffer : vk::Buffer,
+		layout : vk::DescriptorSetLayout,
+	) -> Result<()> {
+
 		self.logical_device.destroy_shader_module(self.compute_shader, None);
+		self.logical_device.destroy_buffer(in_buffer, None);
+		self.logical_device.destroy_buffer(out_buffer, None);
+		self.logical_device.destroy_descriptor_set_layout(layout, None);
 		self.logical_device.free_memory(self.memory, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
@@ -203,6 +252,7 @@ unsafe fn has_portability_subset_extension(
 	let extension_properties = instance.enumerate_device_extension_properties(
 		physical_device, None
 	)?;
+
 	let has_portability = extension_properties.iter()
 		.map(|p| &p.extension_name)
 		.map(|n| n.to_string_lossy())
@@ -221,7 +271,9 @@ fn main() -> Result<()> {
 		(app.queue_index).green(), (app.memory_index).green());
 
 	unsafe { app.populate_buffer()? };
+	let (in_buffer, out_buffer, layout) = unsafe {app.bind_buffer_layout()?};
+	
 	// stuff happens here
 
-	unsafe { app.destroy() }
+	unsafe { app.destroy(in_buffer, out_buffer, layout) }
 }

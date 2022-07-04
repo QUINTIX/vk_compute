@@ -13,7 +13,7 @@ Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-v
 - [x] initiate/teardown logical device
 - [x] select host visible & host coherent memory
 - [x] allocate and populate + teardown 16k floats for input and 16k floats for output
-- [ ] bind/teardown input and output buffers
+- [x] bind/teardown input and output buffers
 - [x] compile compute shader from `cargo build`
 - [x] load computer shader module from compiled external SPV file
 - [ ] create/teardown discriptor set layout & discriptor pool
