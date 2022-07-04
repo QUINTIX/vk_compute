@@ -16,3 +16,13 @@ thiserror = "1"
 log = "0.4"
 pretty_env_logger = "0.4"
 owo-colors = "3.4.0"
+
+[profile.dev]
+opt-level = 1
+debug = 2
+debug-assertions = true
+
+[profile.release]
+opt-level = 3
+debug = 0
+debug-assertions = false
