@@ -134,8 +134,7 @@ impl App {
 		let compute_shader = create_shader_module(&logical_device, shader_binary)?;
 
 		let memory_propertes = instance.get_physical_device_memory_properties(physical_device);
-		let desired_size = (NUM_BUFFERS * NUM_FLOATS * 
-			std::mem::size_of::<f32>()) as vk::DeviceSize;
+		let desired_size = (NUM_BUFFERS * NUM_FLOATS * size_of::<f32>()) as vk::DeviceSize;
 
 		let memory_index : u32 = get_best_memory_type_index(
 			&memory_propertes, 
@@ -172,7 +171,7 @@ impl App {
 			floats.push((item as f32) * 0.5);
 		}
 
-		let shader_read_buffer_size = (NUM_FLOATS * std::mem::size_of::<f32>()) as vk::DeviceSize;
+		let shader_read_buffer_size = (NUM_FLOATS * size_of::<f32>()) as vk::DeviceSize;
 		let mapped = self.logical_device.map_memory(
 			self.memory, 0, shader_read_buffer_size, vk::MemoryMapFlags::empty()
 		)?;
@@ -187,7 +186,7 @@ impl App {
 	pub unsafe fn bind_buffer_layout(&mut self) -> Result<(
 		vk::Buffer, vk::Buffer, vk::DescriptorSetLayout
 	)> {
-		let size_and_offset = (NUM_FLOATS * std::mem::size_of::<f32>()) as u64;
+		let size_and_offset = (NUM_FLOATS * size_of::<f32>()) as vk::DeviceSize;
 
 		let buffer_info = vk::BufferCreateInfo::builder()
 			.size(size_and_offset)
