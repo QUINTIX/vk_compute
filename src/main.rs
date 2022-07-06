@@ -15,6 +15,7 @@ use vulkanalia::loader::{LibloadingLoader, LIBRARY};
 use vulkanalia::prelude::v1_1::*;
 use lib::{
 	get_config,
+	Config,
 	DeviceConfig,
 	pick_physical_device,
 	get_first_compute_queue_family_index, 
@@ -299,9 +300,9 @@ unsafe fn has_portability_subset_extension(
 fn main() -> Result<()> {
 	pretty_env_logger::init();
 	
-	let config = get_config()?;
+	let Config {device : device_config} = get_config()?;
 
-	let mut app = unsafe { App::create(&config.device)? };
+	let mut app = unsafe { App::create(&device_config)? };
 	println!("found compute index {} and memory index {}", 
 		(app.queue_index).green(), (app.memory_index).green());
 
