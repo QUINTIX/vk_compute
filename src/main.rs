@@ -7,6 +7,7 @@ mod lib;
 
 use std::collections::HashSet;
 use std::ptr::copy_nonoverlapping as memcpy;
+use std::mem::size_of;
 
 use anyhow::{anyhow, Result};
 use owo_colors::{OwoColorize, AnsiColors};
@@ -39,7 +40,8 @@ unsafe fn create_instance(entry: &Entry) -> Result<Instance>{
 		.application_version(vk::make_version(1, 0, 0))
 		.engine_name(b"No Engine\0")
 		.engine_version(vk::make_version(1, 0, 0))
-		.api_version(vk::make_version(1, 1, 0));
+		.api_version(vk::make_version(1, 1, 0))
+	.build();
 
 	let available_layers = entry
 		.enumerate_instance_layer_properties()?
@@ -61,7 +63,8 @@ unsafe fn create_instance(entry: &Entry) -> Result<Instance>{
 	
 	let instance_create_info = vk::InstanceCreateInfo::builder()
 		.application_info(&application_info)
-		.enabled_layer_names(&layers);
+		.enabled_layer_names(&layers)
+	.build();
 	Ok(entry.create_instance(&instance_create_info, None)?)
 }
 
@@ -88,7 +91,7 @@ impl App {
 		let queue_priorities = &[1.0];
 		let queue_infos = &[vk::DeviceQueueCreateInfo::builder()
 			.queue_family_index(compute_queue_index)
-			.queue_priorities(queue_priorities)];
+			.queue_priorities(queue_priorities).build()];
 		
 		let layers = if VALIDATION_ENABLED {
 			vec![VALIDATION_LAYER.as_ptr()]
@@ -116,11 +119,11 @@ impl App {
 		//required for shim'd Vulkan spec implementations, like MoltenVK
 		let device_create_info = if does_have_portability_subset_extension {
 			device_create_info_partial
-			.push_next(&mut more_features)
+				.push_next(&mut more_features)
 			.build()
 		} else {
 			device_create_info_partial
-			.enabled_features(&features)
+				.enabled_features(&features)
 			.build()
 		};
 
@@ -188,7 +191,8 @@ impl App {
 		let buffer_info = vk::BufferCreateInfo::builder()
 			.size(size_and_offset)
 			.usage(vk::BufferUsageFlags::STORAGE_BUFFER)
-			.sharing_mode(vk::SharingMode::EXCLUSIVE);
+			.sharing_mode(vk::SharingMode::EXCLUSIVE)
+		.build();
 
 		let in_buffer = self.logical_device.create_buffer(&buffer_info, None)?;
 		self.logical_device.bind_buffer_memory(
@@ -206,13 +210,13 @@ impl App {
 				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 				.descriptor_count(1)
 				.stage_flags(vk::ShaderStageFlags::COMPUTE)
-				.build(),
+			.build(),
 			vk::DescriptorSetLayoutBinding::builder()
 				.binding(1)
 				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
 				.descriptor_count(1)
 				.stage_flags(vk::ShaderStageFlags::COMPUTE)
-				.build(),
+			.build(),
 		];
 
 		let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
@@ -221,16 +225,47 @@ impl App {
 		Ok((in_buffer, out_buffer, layout))
 	}
 
-	unsafe fn destroy(&mut self,
-		in_buffer : vk::Buffer,
-		out_buffer : vk::Buffer,
-		layout : vk::DescriptorSetLayout,
-	) -> Result<()> {
+	pub unsafe fn create_pipeine_with_layout(&mut self, 
+			descriptor_layout : &vk::DescriptorSetLayout
+	) -> Result<(vk::Pipeline, vk::PipelineLayout)> {
+		let descriptor_layout_wrapped = &[*descriptor_layout];
 
+		let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+			.set_layouts(descriptor_layout_wrapped)
+		.build();
+
+		let pipeline_layout = self.logical_device.create_pipeline_layout(
+			&pipeline_layout_create_info, None)?;
+
+		let compute_pipeline_create_info = vk::ComputePipelineCreateInfo::builder()
+			.stage(vk::PipelineShaderStageCreateInfo::builder()
+				.stage(vk::ShaderStageFlags::COMPUTE)
+				.module(self.compute_shader)
+				.name(b"main\0")
+			.build())
+			.layout(pipeline_layout)
+		.build();
+
+		let (pipeline, _) = self.logical_device.create_compute_pipelines(
+			vk::PipelineCache::default(), &[compute_pipeline_create_info],
+			None)?;
+
+		Ok((pipeline, pipeline_layout))
+	}
+
+	unsafe fn destroy(&mut self,
+			in_buffer : vk::Buffer,
+			out_buffer : vk::Buffer,
+			descriptor_layout : vk::DescriptorSetLayout,
+			pipeline : vk::Pipeline,
+			pipeline_layout : vk::PipelineLayout
+	) -> Result<()> {
+		self.logical_device.destroy_pipeline(pipeline, None);
+		self.logical_device.destroy_pipeline_layout(pipeline_layout, None);
 		self.logical_device.destroy_shader_module(self.compute_shader, None);
 		self.logical_device.destroy_buffer(in_buffer, None);
 		self.logical_device.destroy_buffer(out_buffer, None);
-		self.logical_device.destroy_descriptor_set_layout(layout, None);
+		self.logical_device.destroy_descriptor_set_layout(descriptor_layout, None);
 		self.logical_device.free_memory(self.memory, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
@@ -271,9 +306,21 @@ fn main() -> Result<()> {
 		(app.queue_index).green(), (app.memory_index).green());
 
 	unsafe { app.populate_buffer()? };
-	let (in_buffer, out_buffer, layout) = unsafe {app.bind_buffer_layout()?};
-	
+	let (in_buffer, out_buffer, descriptor_layout) = unsafe {
+		app.bind_buffer_layout()?
+	};
+
+	let (pipeline, pipeline_layout) = unsafe {
+		app.create_pipeine_with_layout(&descriptor_layout)?
+	};
+
 	// stuff happens here
 
-	unsafe { app.destroy(in_buffer, out_buffer, layout) }
+	unsafe { 
+		app.destroy(
+			in_buffer, out_buffer,
+			descriptor_layout,
+			pipeline, pipeline_layout
+		)
+	}
 }

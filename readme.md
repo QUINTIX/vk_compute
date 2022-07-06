@@ -17,7 +17,7 @@ Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-v
 - [x] compile compute shader from `cargo build`
 - [x] load computer shader module from compiled external SPV file
 - [ ] create/teardown discriptor set layout & discriptor pool
-- [ ] create/teardown pipeline & pipeline layout
+- [x] create/teardown pipeline & pipeline layout
 - [ ] create/teardown command pool & command buffer
 - [ ] dispatch command buffer
 - [ ] submit to & wait for compute queue
