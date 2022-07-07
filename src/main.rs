@@ -149,9 +149,7 @@ impl App {
 		.build();
 
 		let memory = logical_device.allocate_memory(
-			&memory_allocate_info,
-			None
-		)?;
+			&memory_allocate_info, None)?;
 
 		let queue_index : u32 = compute_queue_index;
 		
@@ -253,13 +251,60 @@ impl App {
 		Ok((pipeline, pipeline_layout))
 	}
 
+	pub unsafe fn create_command_pool_and_buffer(&mut self) -> Result<(
+			vk::CommandPool, vk::CommandBuffer
+	)> {
+		let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+			.queue_family_index(self.queue_index).build();
+		let command_pool = self.logical_device.create_command_pool(
+			&command_pool_create_info, None)?;
+
+		let command_buffer_alloc_info = vk::CommandBufferAllocateInfo::builder()
+			.command_pool(command_pool)
+			.level(vk::CommandBufferLevel::PRIMARY)
+			.command_buffer_count(1)
+		.build();
+
+		let mut command_buffers = self.logical_device.allocate_command_buffers(
+			&command_buffer_alloc_info)?;
+
+		Ok((command_pool, command_buffers.remove(0)))
+	}
+
+	pub unsafe fn record_commands_to_buffer(&mut self, 
+			command_buffer : &vk::CommandBuffer,
+			pipeline : &vk::Pipeline,
+			pipeline_layout : &vk::PipelineLayout,
+			descriptor_set : &vk::DescriptorSet
+	) -> Result<(), vk::ErrorCode> {
+		let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+				.flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT).build();
+
+		self.logical_device.begin_command_buffer(*command_buffer,
+			&command_buffer_begin_info)?;
+
+		self.logical_device.cmd_bind_pipeline(
+			*command_buffer, vk::PipelineBindPoint::COMPUTE, *pipeline);
+
+		self.logical_device.cmd_bind_descriptor_sets(
+			*command_buffer, vk::PipelineBindPoint::COMPUTE,
+			*pipeline_layout, 0, &[*descriptor_set], &[]
+		);
+
+		self.logical_device.cmd_dispatch(*command_buffer, NUM_FLOATS as u32, 1, 1);
+
+		self.logical_device.end_command_buffer(*command_buffer)
+	}
+
 	unsafe fn destroy(&mut self,
+			command_pool : vk::CommandPool,
 			in_buffer : vk::Buffer,
 			out_buffer : vk::Buffer,
 			descriptor_layout : vk::DescriptorSetLayout,
 			pipeline : vk::Pipeline,
 			pipeline_layout : vk::PipelineLayout
 	) -> Result<()> {
+		self.logical_device.destroy_command_pool(command_pool, None);
 		self.logical_device.destroy_pipeline(pipeline, None);
 		self.logical_device.destroy_pipeline_layout(pipeline_layout, None);
 		self.logical_device.destroy_shader_module(self.compute_shader, None);
@@ -285,8 +330,7 @@ fn log_validation() -> () {
 unsafe fn has_portability_subset_extension(
 		instance: &Instance, physical_device : vk::PhysicalDevice) -> Result<bool> {
 	let extension_properties = instance.enumerate_device_extension_properties(
-		physical_device, None
-	)?;
+		physical_device, None)?;
 
 	let has_portability = extension_properties.iter()
 		.map(|p| &p.extension_name)
@@ -307,17 +351,26 @@ fn main() -> Result<()> {
 
 	unsafe { app.populate_buffer()? };
 	let (in_buffer, out_buffer, descriptor_layout) = unsafe {
-		app.bind_buffer_layout()?
-	};
+		app.bind_buffer_layout()? };
 
 	let (pipeline, pipeline_layout) = unsafe {
-		app.create_pipeine_with_layout(&descriptor_layout)?
-	};
+		app.create_pipeine_with_layout(&descriptor_layout)? };
+
+	let (command_pool, command_buffer) = unsafe {
+		app.create_command_pool_and_buffer()? };
+	
+	// unsafe { app.record_commands_to_buffer(
+	// 	&command_buffer,
+	// 	&pipeline,
+	// 	&pipeline_layout,
+	// 	&descriptor_layout
+	// )};
 
 	// stuff happens here
 
 	unsafe { 
 		app.destroy(
+			command_pool,
 			in_buffer, out_buffer,
 			descriptor_layout,
 			pipeline, pipeline_layout
