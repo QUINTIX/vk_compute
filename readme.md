@@ -18,7 +18,7 @@ Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-v
 - [x] load computer shader module from compiled external SPV file
 - [ ] create/teardown discriptor set layout & discriptor pool
 - [x] create/teardown pipeline & pipeline layout
-- [ ] create/teardown command pool & command buffer
+- [x] create/teardown command pool & command buffer
 - [ ] dispatch command buffer
 - [ ] submit to & wait for compute queue
 - [ ] verify transformed output floats

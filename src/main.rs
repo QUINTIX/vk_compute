@@ -1,6 +1,6 @@
 #![allow(
-    dead_code,
-    unused_variables
+	dead_code,
+	unused_variables
 )]
 
 mod lib;
@@ -223,6 +223,60 @@ impl App {
 		Ok((in_buffer, out_buffer, layout))
 	}
 
+	pub unsafe fn create_descriptor_pool_and_set(&self, 
+			in_buffer : &vk::Buffer, out_buffer : &vk::Buffer,
+			layout : &vk::DescriptorSetLayout
+	) -> Result<(vk::DescriptorPool, vk::DescriptorSet)> {
+		let pool_size = vk::DescriptorPoolSize  {
+			type_ : vk::DescriptorType::STORAGE_BUFFER,
+			descriptor_count : NUM_BUFFERS as u32
+		};
+		let pool_size_wrapper = &[pool_size];
+		let pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+			.max_sets(1).pool_sizes(pool_size_wrapper).build();
+		let descriptor_pool = self.logical_device.create_descriptor_pool(
+			&pool_create_info, None)?;
+		
+		let layout_wrapper = &[*layout];
+		let allocate_info = vk::DescriptorSetAllocateInfo::builder()
+			.descriptor_pool(descriptor_pool)
+			.set_layouts(layout_wrapper)
+		.build();
+
+		let descriptor_set = { 
+			let mut descriptor_set_wrapper = self.logical_device
+				.allocate_descriptor_sets(&allocate_info)?;
+			descriptor_set_wrapper.remove(0)
+		};
+		
+		let in_buffer_info = &[ vk::DescriptorBufferInfo {
+			buffer: *in_buffer, offset: 0, range: vk::WHOLE_SIZE as vk::DeviceSize
+		}];
+		let out_buffer_info = &[ vk::DescriptorBufferInfo {
+			buffer: *out_buffer, offset: 0, range: vk::WHOLE_SIZE as vk::DeviceSize
+		}];
+
+		let write_sets = &[
+			vk::WriteDescriptorSet::builder()
+				.dst_set(descriptor_set)
+				.dst_binding(0)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.buffer_info(in_buffer_info)
+			.build(),
+			vk::WriteDescriptorSet::builder()
+				.dst_set(descriptor_set)
+				.dst_binding(1)
+				.descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+				.buffer_info(out_buffer_info)
+			.build(),
+		];
+
+		self.logical_device.update_descriptor_sets(
+			write_sets,  &[] as &[vk::CopyDescriptorSet]);
+
+		Ok((descriptor_pool, descriptor_set))
+	}
+
 	pub unsafe fn create_pipeine_with_layout(&mut self, 
 			descriptor_layout : &vk::DescriptorSetLayout
 	) -> Result<(vk::Pipeline, vk::PipelineLayout)> {
@@ -300,14 +354,17 @@ impl App {
 			command_pool : vk::CommandPool,
 			in_buffer : vk::Buffer,
 			out_buffer : vk::Buffer,
+			descriptor_pool : vk::DescriptorPool,
 			descriptor_layout : vk::DescriptorSetLayout,
 			pipeline : vk::Pipeline,
 			pipeline_layout : vk::PipelineLayout
 	) -> Result<()> {
 		self.logical_device.destroy_command_pool(command_pool, None);
+		self.logical_device.destroy_shader_module(self.compute_shader, None);
+		self.logical_device.destroy_descriptor_pool(descriptor_pool, None);
+		self.logical_device.destroy_descriptor_set_layout(descriptor_layout, None);
 		self.logical_device.destroy_pipeline(pipeline, None);
 		self.logical_device.destroy_pipeline_layout(pipeline_layout, None);
-		self.logical_device.destroy_shader_module(self.compute_shader, None);
 		self.logical_device.destroy_buffer(in_buffer, None);
 		self.logical_device.destroy_buffer(out_buffer, None);
 		self.logical_device.destroy_descriptor_set_layout(descriptor_layout, None);
@@ -359,12 +416,16 @@ fn main() -> Result<()> {
 	let (command_pool, command_buffer) = unsafe {
 		app.create_command_pool_and_buffer()? };
 	
-	// unsafe { app.record_commands_to_buffer(
-	// 	&command_buffer,
-	// 	&pipeline,
-	// 	&pipeline_layout,
-	// 	&descriptor_layout
-	// )};
+	let (descriptor_pool, descriptor_set) = unsafe {
+		app.create_descriptor_pool_and_set(&in_buffer, &out_buffer, 
+			&descriptor_layout)? };
+	
+	unsafe { app.record_commands_to_buffer(
+		&command_buffer,
+		&pipeline,
+		&pipeline_layout,
+		&descriptor_set
+	)?};
 
 	// stuff happens here
 
@@ -372,7 +433,7 @@ fn main() -> Result<()> {
 		app.destroy(
 			command_pool,
 			in_buffer, out_buffer,
-			descriptor_layout,
+			descriptor_pool, descriptor_layout,
 			pipeline, pipeline_layout
 		)
 	}
