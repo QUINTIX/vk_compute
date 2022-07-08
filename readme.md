@@ -15,11 +15,11 @@ Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-v
 - [x] allocate and populate + teardown 16k floats for input and 16k floats for output
 - [x] bind/teardown input and output buffers
 - [x] compile compute shader from `cargo build`
-- [x] load computer shader module from compiled external SPV file
-- [ ] create/teardown discriptor set layout & discriptor pool
+- [x] ~~load~~ include compute shader module from compiled external SPV file
+- [x] create/teardown discriptor set layout & discriptor pool
 - [x] create/teardown pipeline & pipeline layout
 - [x] create/teardown command pool & command buffer
-- [ ] dispatch command buffer
+- [x] ~~dispatch~~ record command buffer
 - [ ] submit to & wait for compute queue
 - [ ] verify transformed output floats
 
