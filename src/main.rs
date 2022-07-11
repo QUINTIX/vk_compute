@@ -398,8 +398,6 @@ impl App {
 			.destroy_pipeline_layout(pipeline_layout, None);
 		self.logical_device.destroy_buffer(in_buffer, None);
 		self.logical_device.destroy_buffer(out_buffer, None);
-		self.logical_device
-			.destroy_descriptor_set_layout(descriptor_layout, None);
 		self.logical_device.free_memory(self.memory, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
