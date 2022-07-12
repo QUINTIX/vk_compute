@@ -20,8 +20,8 @@ Neil Henning (@sheredom)'s [C version](https://www.duskborn.com/posts/a-simple-v
 - [x] create/teardown pipeline & pipeline layout
 - [x] create/teardown command pool & command buffer
 - [x] ~~dispatch~~ record command buffer
-- [ ] submit to & wait for compute queue
-- [ ] verify transformed output floats
+- [x] submit to & wait for compute queue
+- [x] verify transformed output floats
 
 ---
 

@@ -18,6 +18,7 @@ use vulkanalia::prelude::v1_1::*;
 const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
 const VK_KHR_PORTABILITY_SUBSET_STR: &str = "VK_KHR_portability_subset";
+const QUARTER_SECOND_IN_NANOS : u64 = 250000000;
 
 const VALIDATION_LAYER: vk::ExtensionName =
 	vk::ExtensionName::from_bytes(b"VK_LAYER_KHRONOS_validation");
@@ -71,6 +72,7 @@ struct App {
 	memory_index: u32,
 	memory: vk::DeviceMemory,
 	compute_shader: vk::ShaderModule,
+	done_fence : vk::Fence
 }
 
 impl App {
@@ -144,6 +146,12 @@ impl App {
 
 		let queue_index: u32 = compute_queue_index;
 
+		let fence_create = vk::FenceCreateInfo::builder()
+			.flags(vk::FenceCreateFlags::SIGNALED)
+			.build();
+
+		let done_fence = logical_device.create_fence(&fence_create, None)?;
+
 		Ok(Self {
 			entry,
 			instance,
@@ -153,6 +161,7 @@ impl App {
 			memory_index,
 			memory,
 			compute_shader,
+			done_fence
 		})
 	}
 
@@ -373,7 +382,37 @@ impl App {
 		self.logical_device
 			.cmd_dispatch(*command_buffer, NUM_FLOATS as u32, 1, 1);
 
+
 		self.logical_device.end_command_buffer(*command_buffer)
+	}
+
+	unsafe fn do_the_thing(&mut self, command_buffer: &vk::CommandBuffer)
+			 -> Result<Vec<f32>> {
+		let queue : vk::Queue = self.logical_device
+			.get_device_queue(self.queue_index, 0);
+		let command_buffer_wrapper = &[*command_buffer];
+
+		let submit_info = &[vk::SubmitInfo::builder()
+			.command_buffers(command_buffer_wrapper)
+			.build()];
+		
+		self.logical_device.reset_fences(&[self.done_fence])?;
+		self.logical_device.queue_submit(queue, submit_info, self.done_fence)?;
+		self.logical_device.wait_for_fences(&[self.done_fence], true,
+			QUARTER_SECOND_IN_NANOS)?;
+		
+		let buffer_size_and_offset = (NUM_FLOATS * size_of::<f32>()) as vk::DeviceSize;
+		let mapped = self.logical_device.map_memory(
+			self.memory,
+			buffer_size_and_offset,
+			buffer_size_and_offset,
+			vk::MemoryMapFlags::empty(),
+		)?;
+
+		let mut floats: Vec<f32> = vec![0.0; NUM_FLOATS];
+		memcpy(mapped.cast(), floats.as_mut_ptr(), floats.len());
+		
+		Ok(floats)
 	}
 
 	unsafe fn destroy(
@@ -399,6 +438,7 @@ impl App {
 		self.logical_device.destroy_buffer(in_buffer, None);
 		self.logical_device.destroy_buffer(out_buffer, None);
 		self.logical_device.free_memory(self.memory, None);
+		self.logical_device.destroy_fence(self.done_fence, None);
 		self.logical_device.destroy_device(None);
 		self.instance.destroy_instance(None);
 		Ok(())
@@ -465,6 +505,26 @@ fn main() -> Result<()> {
 	)?};
 
 	// stuff happens here
+	let results = unsafe {
+		app.do_the_thing(&command_buffer)?
+	};
+
+	println!("first result is {}; last result is {}",
+		results[0].color(AnsiColors::BrightWhite),
+		results[NUM_FLOATS - 1].color(AnsiColors::BrightWhite));
+	
+	let matches_index = results
+		.iter()
+		.enumerate()
+		.filter(|(idx, value)| *idx == value.round() as usize)
+		.count() == NUM_FLOATS;
+
+	let did_it_work_message = match matches_index {
+		true => "all values match".color(AnsiColors::BrightGreen),
+		false => "something broke".color(AnsiColors::BrightRed)
+	};
+	
+	println!("{}", did_it_work_message);
 
 	unsafe { 
 		app.destroy(
