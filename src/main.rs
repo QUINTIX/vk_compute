@@ -103,21 +103,20 @@ impl App {
 			Vec::new()
 		};
 
-		let features = vk::PhysicalDeviceFeatures::builder();
-		let mut more_features = vk::PhysicalDeviceFeatures2::builder().build();
-		instance.get_physical_device_features2(physical_device, &mut more_features);
-
 		let device_create_info_partial = vk::DeviceCreateInfo::builder()
 			.queue_create_infos(queue_infos)
 			.enabled_layer_names(&layers)
 			.enabled_extension_names(&extensions);
 
-		//required for shim'd Vulkan spec implementations, like MoltenVK
 		let device_create_info = if does_have_portability_subset_extension {
+			//required for shim'd Vulkan spec implementations, like MoltenVK
+			let mut more_features = vk::PhysicalDeviceFeatures2::builder().build();
+			instance.get_physical_device_features2(physical_device, &mut more_features);
 			device_create_info_partial
 				.push_next(&mut more_features)
 				.build()
 		} else {
+			let features = vk::PhysicalDeviceFeatures::builder();
 			device_create_info_partial
 				.enabled_features(&features)
 				.build()
