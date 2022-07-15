@@ -116,7 +116,8 @@ impl App {
 				.push_next(&mut more_features)
 				.build()
 		} else {
-			let features = vk::PhysicalDeviceFeatures::builder();
+			let features = instance
+				.get_physical_device_features(physical_device);
 			device_create_info_partial
 				.enabled_features(&features)
 				.build()
